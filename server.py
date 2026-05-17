@@ -1,14 +1,19 @@
 from flask import Flask, request
-import requests
+from twilio.rest import Client
 from groq import Groq
+import os
 
 app = Flask(__name__)
 
-TOKEN    = "wati_a25a27d5-04f7-4202-adb3-63c35d10b849.p_G0lLjySFgx26zaTi1iQazskNnQbfXKUVy-Nz01DNTfn3j1ZMFkLd9kK6kAdNs-adMN48BnoemnxSssdsvlXycpEgQ6h0AT6yUZnap81wy-uBXZefVuQ3ZdDihHy7Hd"
-ENDPOINT = "https://live-mt-server.wati.io/10158876"
-HEADERS  = {"Authorization": f"Bearer {TOKEN}"}
+# Twilio - ambil dari environment variables
+TWILIO_SID   = os.environ.get("TWILIO_SID")
+TWILIO_TOKEN = os.environ.get("TWILIO_TOKEN")
+FROM_NUMBER  = "whatsapp:+6288211488947"
 
-GROQ_KEY = "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"
+twilio_client = Client(TWILIO_SID, TWILIO_TOKEN)
+
+# Groq AI - ambil dari environment variables
+GROQ_KEY = os.environ.get("GROQ_KEY")
 client   = Groq(api_key=GROQ_KEY)
 
 SYSTEM_PROMPT = """
@@ -33,24 +38,22 @@ def get_ai_reply(phone, text):
     history[phone].append({"role": "assistant", "content": reply})
     return reply
 
-def send_message(phone, message):
-    phone = phone.replace("+", "").replace("-", "").replace(" ", "")
-    url = f"{ENDPOINT}/api/v1/sendSessionMessage/{phone}"
-    r = requests.post(url, data={"messageText": message}, headers=HEADERS)
-    print(f"Kirim ke {phone}: {r.status_code} - {r.text}")
-
-@app.route("/webhook", methods=["POST", "GET"])
+@app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json or {}
-    print("Masuk:", data)
-    phone = data.get("waId")
-    text  = data.get("text", "")
-    if data.get("owner"):
-        return "OK", 200
+    phone = request.form.get("From", "")  # format: whatsapp:+628xxx
+    text  = request.form.get("Body", "")
+    print(f"Masuk dari {phone}: {text}")
+
     if not phone or not text:
         return "OK", 200
+
     reply = get_ai_reply(phone, text)
-    send_message(phone, reply)
+
+    twilio_client.messages.create(
+        from_=FROM_NUMBER,
+        to=phone,
+        body=reply
+    )
     return "OK", 200
 
 @app.route("/", methods=["GET"])
